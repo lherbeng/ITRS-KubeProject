@@ -1,0 +1,92 @@
+pipeline {
+    agent { label 'agent1' }
+
+    environment {
+        REPO_URL = 'https://github.com/lherbeng/RKE2.git'  // Replace with your actual repo
+        INSTALL_SCRIPT_PATH = 'rancher/install_rke2_server.sh'
+        UNINSTALL_SCRIPT_PATH = 'rancher/uninstall_rke2_server.sh'
+        KUBECONFIG = '/etc/rancher/rke2/rke2.yaml'
+    }
+
+    parameters {
+        choice(
+            name: 'ACTION',
+            choices: ['install', 'uninstall'],
+            description: 'Choose whether to install or uninstall RKE2'
+        )
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                // Checkout the code from GitHub
+                git url: "${REPO_URL}", branch: 'main'
+            }
+        }
+
+        stage('Install RKE2 Server') {
+            when {
+                expression { params.ACTION == 'install' }  // Only run if "install" is chosen
+            }
+            steps {
+                echo 'Installing RKE2...'
+
+                // Provide execution permission to the install script
+                sh "chmod +x ${INSTALL_SCRIPT_PATH}"
+
+                // Run the install script
+                sh "bash -c 'source ${INSTALL_SCRIPT_PATH}'"
+            }
+        }
+
+        stage('Verify RKE2 Installation') {
+            when {
+                expression { params.ACTION == 'install' }  // Only verify if "install" is chosen
+            }
+            steps {
+                withEnv(["KUBECONFIG=${KUBECONFIG}"]) {
+                    // Verify that RKE2 server is running and kubectl is working
+                    sh '''
+                       kubectl get node -o wide || echo "kubectl not found or RKE2 server is not running."
+                    '''
+                }
+            }
+        }
+
+        stage('Uninstall RKE2 Server') {
+            when {
+                expression { params.ACTION == 'uninstall' }  // Only run if "uninstall" is chosen
+            }
+            steps {
+                echo 'Uninstalling RKE2...'
+
+                // Provide execution permission to the uninstall script
+                sh "chmod +x ${UNINSTALL_SCRIPT_PATH}"
+
+                // Run the uninstall script
+                sh "./${UNINSTALL_SCRIPT_PATH}"
+            }
+        }
+    }
+
+    post {
+        success {
+            script {
+                if (params.ACTION == 'install') {
+                    echo 'RKE2 Server installed successfully!'
+                } else if (params.ACTION == 'uninstall') {
+                    echo 'RKE2 Server uninstalled successfully!'
+                }
+            }
+        }
+        failure {
+            script {
+                if (params.ACTION == 'install') {
+                    echo 'RKE2 Server installation failed.'
+                } else if (params.ACTION == 'uninstall') {
+                    echo 'RKE2 Server uninstallation failed.'
+                }
+            }
+        }
+    }
+}

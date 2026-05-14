@@ -1,0 +1,130 @@
+pipeline {
+    agent { label 'agent1' }
+
+    environment {
+        REPO_URL = 'https://github.com/lherbeng/RKE2.git'  // Replace with your actual repo
+        INSTALL_SCRIPT_PATH = 'loadbalancer/install_nginx.sh'
+        UNINSTALL_SCRIPT_PATH = 'loadbalancer/uninstall_nginx.sh'
+        SSL_SCRIPT_PATH = 'loadbalancer/generate_ssl_with_logs.sh'
+        NGINX_CONFIG = 'loadbalancer/nginx.conf'
+    }
+
+    parameters {
+        choice(
+            name: 'ACTION',
+            choices: ['install', 'uninstall'],
+            description: 'Choose whether to install or uninstall LoadBalancer'
+        )
+        booleanParam(
+            name: 'ENABLE_SSL',
+            defaultValue: false,
+            description: 'Check to enable SSL installation'
+        )
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                // Checkout the code from github
+                echo 'Checking out code from GitHub...'
+                git url: "${REPO_URL}", branch: 'main'
+            }
+        }
+
+        stage('Install nginx service') {
+            when {
+                expression { params.ACTION == 'install' } // Only run if "install" is chosen
+            }
+            steps {
+                echo 'Installing NGINX...'
+
+                // Provide execution permission to the install script
+                sh "chmod +x ${INSTALL_SCRIPT_PATH}"
+
+                // Run the install script
+                sh "./${INSTALL_SCRIPT_PATH}"
+
+                // Backup the original nginx.conf
+                sh """
+                    if [ -f /etc/nginx/nginx.conf ]; then
+                        sudo mv /etc/nginx/nginx.conf /etc/nginx/nginx.conf.orig
+                    fi
+                """
+
+                echo 'Copying nginx.conf to /etc/nginx/nginx.conf...'
+
+                // Copy nginx.conf to /etc/nginx/nginx.conf
+                sh """ 
+                    sudo cp ${NGINX_CONFIG} /etc/nginx/nginx.conf
+                    sudo nginx -t # Test the nginx configuration for syntax errors
+                    sudo systemctl restart nginx # Restart NGINX to apply the changes
+                """
+
+                // Check if SSL should be installed
+                script {
+                    if (params.ENABLE_SSL) {
+                        echo 'Installing SSL...'
+                        sh """
+                            echo "Running SSL script..."
+                            sudo chmod +x ${SSL_SCRIPT_PATH}
+                            sudo ./${SSL_SCRIPT_PATH}
+
+                            echo "Verifying SSL files..."
+                            ls -l /etc/nginx/ssl
+                        """
+                        
+                        echo 'Verifying SSL installation...'
+                        sh """
+                            if [ ! -f /etc/nginx/ssl/lgesite.com.crt ] || [ ! -f /etc/nginx/ssl/lgesite.com.key ]; then
+                                echo "Error: SSL certificate or key missing!" >&2
+                                exit 1
+                            fi
+                        """
+                        
+                        echo "Testing NGINX configuration with SSL..."
+                        sh """
+                            sudo nginx -t
+                            sudo systemctl restart nginx
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Uninstall nginx service') {
+            when {
+                expression { params.ACTION == 'uninstall' } // Only run if "uninstall" is chosen
+            }
+            steps {
+                echo 'Uninstalling NGINX...'
+
+                // Provide execution permission to the uninstall script
+                sh "chmod +x ${UNINSTALL_SCRIPT_PATH}"
+
+                // Run the uninstall script
+                sh "./${UNINSTALL_SCRIPT_PATH}"
+            }
+        }
+    }
+
+    post {
+        success {
+            script {
+                if (params.ACTION == 'install') {
+                    echo 'NGINX service installed successfully!'
+                } else if (params.ACTION == 'uninstall') {
+                    echo 'NGINX service uninstalled successfully!'
+                }
+            }
+        }
+        failure {
+            script {
+                if (params.ACTION == 'install') {
+                    echo 'NGINX service installation failed.'
+                } else if (params.ACTION == 'uninstall') {
+                    echo 'NGINX service uninstallation failed.'
+                }
+            }
+        }
+    }
+}
