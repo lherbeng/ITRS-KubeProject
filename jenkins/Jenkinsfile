@@ -2,7 +2,7 @@ pipeline {
     agent { label 'agent1' }
 
     environment {
-        REPO_URL = 'https://github.com/lherbeng/RKE2.git'
+        REPO_URL = 'https://github.com/lherbeng/ITRS-KubeProject.git'
         INSTALL_SERVER_SCRIPT = 'rancher/install_rke2_server.sh'
         UNINSTALL_SERVER_SCRIPT = 'rancher/uninstall_rke2_server.sh'
         INSTALL_AGENT_SCRIPT = 'rancher/install_rke2_agent.sh'
