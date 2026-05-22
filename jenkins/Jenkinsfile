@@ -84,7 +84,7 @@ pipeline {
             }
             steps {
                 script {
-                    def workerNodes = ['192.168.1.7', '192.168.1.8']  // Add your worker IPs here
+                    def workerNodes = ['10.140.5.84', '10.140.4.55']  // Add your worker IPs here
 
                     def parallelInstalls = [:]
 
