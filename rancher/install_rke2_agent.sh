@@ -1,47 +1,44 @@
 #!/bin/bash
-set -x  # Enable debugging
+set -euxo pipefail
 
-# Stop Firewall
-systemctl disable --now ufw
+# Disable firewall
+systemctl disable --now ufw || true
 
-# Run updates and install necessary packages
+# Install required packages
 apt update
-apt install nfs-common open-iscsi -y
-apt upgrade -y
+apt install -y nfs-common open-iscsi curl openssh-client
 
-# Clean up unused packages
-apt autoremove -y
-
-# Define master node IP and user
-MASTER_IP="192.168.1.5"
+# Define master node
+MASTER_IP="10.140.7.5"
 MASTER_USER="root"
+
+# Create RKE2 config directory
+mkdir -p /etc/rancher/rke2/
 
 # Install RKE2 Agent
 curl -sfL https://get.rke2.io | INSTALL_RKE2_TYPE="agent" sh -
 
-# Enable the RKE2 Agent service
+# Enable service
 systemctl enable rke2-agent.service
 
-# Create config directory and fetch token from master
-mkdir -p /etc/rancher/rke2/
-scp ${MASTER_USER}@${MASTER_IP}:/var/lib/rancher/rke2/server/node-token /etc/rancher/rke2/node-token
+# Copy node token from master and skip SSH host authenticity prompt during automation
+scp -o StrictHostKeyChecking=no \
+${MASTER_USER}@${MASTER_IP}:/var/lib/rancher/rke2/server/node-token \
+/etc/rancher/rke2/node-token
 
-# Create config.yaml for agent
-TOKEN=$(cat /etc/rancher/rke2/node-token)
+# Create config.yaml
 cat <<EOF > /etc/rancher/rke2/config.yaml
 server: https://${MASTER_IP}:9345
-token: ${TOKEN}
+token: $(cat /etc/rancher/rke2/node-token)
 EOF
 
-# Start the RKE2 Agent service
+# Start service
 systemctl start rke2-agent.service
 
-# Wait for agent to fully join
-while ! systemctl is-active --quiet rke2-agent.service; do
-    echo "Waiting for RKE2 Agent to be up..."
-    sleep 5
-done
-echo "RKE2 Agent is running."
+# Check status
+systemctl status rke2-agent.service --no-pager
 
-# Confirm with node IP
-ip addr | grep inet
+echo "RKE2 Agent installation completed."
+
+# Official Website
+# https://docs.rke2.io/install/quickstart#linux-agent-worker-node-installation
