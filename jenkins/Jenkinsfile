@@ -1,5 +1,5 @@
 pipeline {
-    agent { label 'agent1' }
+    agent none
 
     environment {
         REPO_URL = 'https://github.com/lherbeng/ITRS-KubeProject.git'
@@ -25,11 +25,6 @@ pipeline {
     }
 
     stages {
-        stage('Checkout') {
-            steps {
-                git url: "${REPO_URL}", branch: 'main'
-            }
-        }
 
         stage('Install RKE2 Server') {
             when {
@@ -38,25 +33,37 @@ pipeline {
                     expression { params.ACTION == 'install' }
                 }
             }
-            steps {
-                echo 'Installing RKE2 Server...'
-                sh "chmod +x ${INSTALL_SERVER_SCRIPT}"
-                sh "bash -c 'source ${INSTALL_SERVER_SCRIPT}'"
-            }
-        }
 
-        stage('Verify RKE2 Server Installation') {
-            when {
-                allOf {
-                    expression { params.NODE_TYPE == 'server' }
-                    expression { params.ACTION == 'install' }
+            agent { label 'agent1' }
+
+            stages {
+
+                stage('Checkout') {
+                    steps {
+                        git url: "${REPO_URL}", branch: 'main'
+                    }
                 }
-            }
-            steps {
-                withEnv(["KUBECONFIG=${KUBECONFIG}"]) {
-                    sh '''
-                        kubectl get nodes -o wide || echo "kubectl not found or RKE2 server is not running."
-                    '''
+
+                stage('Install Server') {
+                    steps {
+                        echo 'Installing RKE2 Server...'
+
+                        sh """
+                            chmod +x ${INSTALL_SERVER_SCRIPT}
+                            ./${INSTALL_SERVER_SCRIPT}
+                        """
+                    }
+                }
+
+                stage('Verify Server') {
+                    steps {
+                        withEnv(["KUBECONFIG=${KUBECONFIG}"]) {
+                            sh '''
+                                kubectl get nodes -o wide || \
+                                echo "kubectl not found or RKE2 server is not running."
+                            '''
+                        }
+                    }
                 }
             }
         }
@@ -68,63 +75,150 @@ pipeline {
                     expression { params.ACTION == 'uninstall' }
                 }
             }
-            steps {
-                echo 'Uninstalling RKE2 Server...'
-                sh "chmod +x ${UNINSTALL_SERVER_SCRIPT}"
-                sh "./${UNINSTALL_SERVER_SCRIPT}"
+
+            agent { label 'agent1' }
+
+            stages {
+
+                stage('Checkout') {
+                    steps {
+                        git url: "${REPO_URL}", branch: 'main'
+                    }
+                }
+
+                stage('Uninstall Server') {
+                    steps {
+                        echo 'Uninstalling RKE2 Server...'
+
+                        sh """
+                            chmod +x ${UNINSTALL_SERVER_SCRIPT}
+                            ./${UNINSTALL_SERVER_SCRIPT}
+                        """
+                    }
+                }
             }
         }
 
-        stage('Install RKE2 Agents (Parallel)') {
+        stage('Install RKE2 Agents Parallel') {
             when {
                 allOf {
                     expression { params.NODE_TYPE == 'agent' }
                     expression { params.ACTION == 'install' }
                 }
             }
-            steps {
-                script {
-                    def workerNodes = ['10.140.5.84', '10.140.4.55']  // Add your worker IPs here
 
-                    def parallelInstalls = [:]
+            parallel {
 
-                    for (ip in workerNodes) {
-                        def nodeIp = ip
-                        parallelInstalls["Install on ${nodeIp}"] = {
-                            echo "Installing RKE2 Agent on ${nodeIp}..."
-                            sh "chmod +x ${INSTALL_AGENT_SCRIPT}"
-                            sh "ssh root@${nodeIp} 'bash -s' < ${INSTALL_AGENT_SCRIPT}"
+                stage('Install Agent on workernode1') {
+
+                    agent { label 'agent1' }
+
+                    stages {
+
+                        stage('Checkout') {
+                            steps {
+                                git url: "${REPO_URL}", branch: 'main'
+                            }
+                        }
+
+                        stage('Install Agent1') {
+                            steps {
+                                echo 'Installing RKE2 Agent on workernode1...'
+
+                                sh """
+                                    chmod +x ${INSTALL_AGENT_SCRIPT}
+                                    ./${INSTALL_AGENT_SCRIPT}
+                                """
+                            }
                         }
                     }
+                }
 
-                    parallel parallelInstalls
+                stage('Install Agent on workernode2') {
+
+                    agent { label 'agent2' }
+
+                    stages {
+
+                        stage('Checkout') {
+                            steps {
+                                git url: "${REPO_URL}", branch: 'main'
+                            }
+                        }
+
+                        stage('Install Agent2') {
+                            steps {
+                                echo 'Installing RKE2 Agent on workernode2...'
+
+                                sh """
+                                    chmod +x ${INSTALL_AGENT_SCRIPT}
+                                    ./${INSTALL_AGENT_SCRIPT}
+                                """
+                            }
+                        }
+                    }
                 }
             }
         }
 
-        stage('Uninstall RKE2 Agents (Parallel)') {
+        stage('Uninstall RKE2 Agents Parallel') {
             when {
                 allOf {
                     expression { params.NODE_TYPE == 'agent' }
                     expression { params.ACTION == 'uninstall' }
                 }
             }
-            steps {
-                script {
-                    def workerNodes = ['10.140.5.84', '10.140.4.55']  // Add your worker IPs here
 
-                    def parallelUninstalls = [:]
+            parallel {
 
-                    for (ip in workerNodes) {
-                        def nodeIp = ip
-                        parallelUninstalls["Uninstall on ${nodeIp}"] = {
-                            echo "Uninstalling RKE2 Agent from ${nodeIp}..."
-                            sh "chmod +x ${UNINSTALL_AGENT_SCRIPT}"
-                            sh "ssh root@${nodeIp} 'bash -s' < ${UNINSTALL_AGENT_SCRIPT}"
+                stage('Uninstall Agent on workernode1') {
+
+                    agent { label 'agent1' }
+
+                    stages {
+
+                        stage('Checkout') {
+                            steps {
+                                git url: "${REPO_URL}", branch: 'main'
+                            }
+                        }
+
+                        stage('Uninstall Agent1') {
+                            steps {
+                                echo 'Uninstalling RKE2 Agent from workernode1...'
+
+                                sh """
+                                    chmod +x ${UNINSTALL_AGENT_SCRIPT}
+                                    ./${UNINSTALL_AGENT_SCRIPT}
+                                """
+                            }
                         }
                     }
+                }
 
-                    parallel parallelUninstalls
+                stage('Uninstall Agent on workernode2') {
+
+                    agent { label 'agent2' }
+
+                    stages {
+
+                        stage('Checkout') {
+                            steps {
+                                git url: "${REPO_URL}", branch: 'main'
+                            }
+                        }
+
+                        stage('Uninstall Agent2') {
+                            steps {
+                                echo 'Uninstalling RKE2 Agent from workernode2...'
+
+                                sh """
+                                    chmod +x ${UNINSTALL_AGENT_SCRIPT}
+                                    ./${UNINSTALL_AGENT_SCRIPT}
+                                """
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -134,6 +228,7 @@ pipeline {
         success {
             echo "✅ ${params.NODE_TYPE} ${params.ACTION} completed successfully."
         }
+
         failure {
             echo "❌ ${params.NODE_TYPE} ${params.ACTION} failed."
         }
