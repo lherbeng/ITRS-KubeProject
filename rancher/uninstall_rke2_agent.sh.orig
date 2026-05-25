@@ -1,11 +1,11 @@
 #!/bin/bash
-set -euxo pipefail
+set -x  # Enable debug output
 
 echo "Stopping RKE2 Agent service..."
-systemctl stop rke2-agent || true
+systemctl stop rke2-agent
 
 echo "Disabling RKE2 Agent service..."
-systemctl disable rke2-agent || true
+systemctl disable rke2-agent
 
 echo "Removing RKE2 binaries and systemd files..."
 rm -f /usr/local/bin/rke2*
@@ -20,8 +20,5 @@ echo "Deleting RKE2 config and data directories..."
 rm -rf /etc/rancher/rke2
 rm -rf /var/lib/rancher/rke2
 rm -rf /etc/rancher/node
-
-echo "Optional Kubernetes/CNI cleanup..."
-rm -rf /var/lib/kubelet /etc/cni /opt/cni /var/lib/cni 2>/dev/null || true
 
 echo "RKE2 Agent node has been fully uninstalled and cleaned up."
